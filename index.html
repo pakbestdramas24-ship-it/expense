@@ -100,6 +100,7 @@ nav button.add .e{width:46px;height:46px;background:var(--green);color:#fff;bord
 .goalbar button{flex:1}
 .empty{text-align:center;color:var(--mut);font-size:13px;padding:18px 6px}
 .small{font-size:12px;color:var(--mut)}
+@media print{nav,.modal,.btn,#addModal,.toast{display:none!important}body{padding-bottom:0}header{position:static}}
 pre.csvbox{white-space:pre-wrap;word-break:break-all;background:#f4f7f5;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;max-height:220px;overflow:auto;margin-top:10px}
 </style>
 </head>
@@ -143,7 +144,7 @@ pre.csvbox{white-space:pre-wrap;word-break:break-all;background:#f4f7f5;border:1
     </div>
     <div class="filters" id="catFilter" style="margin-top:6px"></div>
     <div id="hisaabList"></div>
-    <button class="btn grey" onclick="exportCSV()">⬇️ CSV Export Karein</button>
+    <div style="display:flex;gap:8px"><button class="btn grey" style="flex:1" onclick="exportCSV()">⬇️ CSV Download</button><button class="btn blue" style="flex:1" onclick="exportPDF()">📄 PDF Download</button></div>
     <pre class="csvbox" id="csvOut" style="display:none"></pre>
   </div>
 </section>
@@ -169,7 +170,7 @@ pre.csvbox{white-space:pre-wrap;word-break:break-all;background:#f4f7f5;border:1
     <label>Har Mahine Ki Tareekh</label><input id="billDay" type="number" inputmode="numeric" min="1" max="28" placeholder="1–28">
     <button class="btn" onclick="addBill()">Bill Add Karein</button>
   </div>
-  <div class="card"><h2>📈 Reports</h2><div id="reportBox"></div></div>
+  <div class="card"><h2>📈 Reports</h2><div id="reportBox"></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn blue" style="flex:1" onclick="exportPDF()">📄 PDF Report</button><button class="btn grey" style="flex:1" onclick="exportCSV()">⬇️ CSV Report</button></div></div>
   <div class="card"><h2>⚙️ Settings</h2>
     <label>Currency</label>
     <select id="curSel" onchange="setCurrency(this.value)">
@@ -215,6 +216,8 @@ pre.csvbox{white-space:pre-wrap;word-break:break-all;background:#f4f7f5;border:1
   <button class="btn grey" onclick="closeAdd()">Cancel</button>
 </div></div>
 <div class="toast" id="toast"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 const EXP_CATS=[["🍔","Khana Peena"],["🏠","Ghar / Kiraya"],["💡","Bijli"],["🔥","Gas"],["💧","Pani"],["🚗","Transport / Petrol"],["📱","Mobile / Internet"],["👕","Kapray"],["💊","Sehat / Dawai"],["📚","Taleem"],["🛍️","Shopping"],["🏪","Dukaan / Shop"],["🎉","Tafreeh"],["💸","Doosra Kharcha"]];
 const INC_CATS=[["💼","Tankhwah"],["🏪","Dukaan Aamdani"],["🛒","Online Sale"],["💻","Freelance"],["🎁","Gift"],["💰","Doosri Aamdani"]];
@@ -277,7 +280,12 @@ function setFilter(t,btn){filterType=t;document.querySelectorAll("#typeFilter bu
 function renderHisaab(){const q=(document.getElementById("q").value||"").toLowerCase();let list=monthTx().filter(t=>(filterType==="all"||t.type===filterType)&&(filterCat==="all"||t.cat===filterCat)&&(!q||(t.cat+" "+(t.note||"")).toLowerCase().includes(q))).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
 let html="",lastDay="";let tI=0,tE=0;list.forEach(t=>{if(t.type==="income")tI+=t.amount;else tE+=t.amount;if(t.date!==lastDay){html+=`<div class="dayhead">${t.date}</div>`;lastDay=t.date;}html+=txRow(t);});
 document.getElementById("hisaabList").innerHTML=(list.length?html:'<div class="empty">Is mahine koi entry nahi mili.</div>')+`<div class="brow" style="margin-top:8px"><span>Aamdani</span><b style="color:var(--green)">${fmt(tI)}</b></div><div class="brow"><span>Kharcha</span><b style="color:var(--red)">${fmt(tE)}</b></div><div class="brow"><span>Balance</span><b>${fmt(tI-tE)}</b></div>`;}
-function exportCSV(){const rows=[["Date","Type","Category","Account","Amount","Note"]];monthTx().forEach(t=>rows.push([t.date,t.type==="income"?"Income":"Expense",t.cat,t.acct,t.amount,'"'+(t.note||"").replace(/"/g,'""')+'"']));const csv=rows.map(r=>r.join(",")).join("\n");const o=document.getElementById("csvOut");o.textContent=csv;o.style.display="block";try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="kharcha-patha-"+monthKey(curMonth)+".csv";a.click();toast("CSV download ho rahi hai ✅");}catch(e){toast("CSV neeche copy kar lein");}}
+function buildReportData(){const mtx=monthTx();let inc=0,exp=0;mtx.forEach(t=>{if(t.type==="income")inc+=t.amount;else exp+=t.amount;});const byCat={};mtx.forEach(t=>{if(t.type==="expense")byCat[t.cat]=(byCat[t.cat]||0)+t.amount;});const cats=Object.entries(byCat).sort((a,b)=>b[1]-a[1]);const txs=[...mtx].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);return {key:monthKey(curMonth),month:monthName(curMonth),inc,exp,cats,txs,rate:inc?Math.round((inc-exp)/inc*100):0};}
+function fmtN(n){return (DB.currency||"Rs")+" "+Math.round(n).toLocaleString("en-PK");}
+function downloadFile(name,content,type){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();}
+function exportCSV(){const rep=buildReportData();const q=s=>'"'+String(s===undefined||s===null?"":s).replace(/"/g,'""')+'"';const L=[];L.push(q("Kharcha Patha — Monthly Report"));L.push([q("Mahina"),q(rep.month)].join(","));L.push([q("Tareekh"),q(new Date().toLocaleDateString("en-GB"))].join(","));L.push("");L.push(["Tareekh","Qisam","Category","Account","Amount ("+(DB.currency||"Rs")+")","Note"].map(q).join(","));rep.txs.forEach(t=>L.push([t.date,t.type==="income"?"Aamdani":"Kharcha",t.cat,t.acct,t.amount,t.note||""].map(q).join(",")));L.push("");L.push([q("SUMMARY")].join(","));L.push(["Kul Aamdani",rep.inc].map(q).join(","));L.push(["Kul Kharcha",rep.exp].map(q).join(","));L.push(["Balance (Bachat)",rep.inc-rep.exp].map(q).join(","));L.push(["Bachat %",rep.rate+"%"].map(q).join(","));L.push("");L.push([q("Category-wise Kharcha")].join(","));L.push(["Category","Amount","%"].map(q).join(","));rep.cats.forEach(c=>L.push([c[0],c[1],Math.round(c[1]/(rep.exp||1)*100)+"%"].map(q).join(",")));const csv=L.join("\n");const o=document.getElementById("csvOut");o.textContent=csv;o.style.display="block";try{downloadFile("kharcha-patha-"+rep.key+".csv",csv,"text/csv");toast("CSV download ho rahi hai ✅");}catch(e){toast("CSV neeche copy kar lein");}}
+function exportPDF(){const rep=buildReportData();if(!(window.jspdf&&window.jspdf.jsPDF)){toast("PDF library load nahi hui — net check karein");window.print();return;}const {jsPDF}=window.jspdf;const doc=new jsPDF();doc.setFontSize(18);doc.text("Kharcha Patha — Monthly Report",14,16);doc.setFontSize(11);doc.setTextColor(100);doc.text("Mahina: "+rep.month+"    |    Generated: "+new Date().toLocaleDateString("en-GB"),14,24);doc.setTextColor(0);doc.autoTable({startY:30,head:[["Kul Aamdani","Kul Kharcha","Bachat","Bachat %"]],body:[[fmtN(rep.inc),fmtN(rep.exp),fmtN(rep.inc-rep.exp),rep.rate+"%"]],theme:"grid",styles:{halign:"center"},headStyles:{fillColor:[13,122,79]}});let y=doc.lastAutoTable.finalY+8;doc.setFontSize(13);doc.text("Category-wise Kharcha",14,y);doc.autoTable({startY:y+4,head:[["Category","Amount","%"]],body:rep.cats.length?rep.cats.map(c=>[c[0],fmtN(c[1]),Math.round(c[1]/(rep.exp||1)*100)+"%"]):[["Koi kharcha nahi","—","—"]],theme:"striped",headStyles:{fillColor:[13,122,79]}});y=doc.lastAutoTable.finalY+8;doc.setFontSize(13);doc.text("Transactions ("+rep.txs.length+")",14,y);doc.autoTable({startY:y+4,head:[["Tareekh","Qisam","Category","Account","Amount","Note"]],body:rep.txs.length?rep.txs.map(t=>[t.date,t.type==="income"?"Aamdani":"Kharcha",t.cat,t.acct,(t.type==="income"?"+":"-")+" "+fmtN(t.amount),t.note||""]):[["Koi entry nahi","","","","",""]],theme:"striped",headStyles:{fillColor:[13,122,79]},styles:{fontSize:9},columnStyles:{5:{cellWidth:45}}});const pages=doc.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(9);doc.setTextColor(150);doc.text("Generated by Kharcha Patha  •  Page "+i+" / "+pages,14,doc.internal.pageSize.height-8);}doc.save("kharcha-patha-report-"+rep.key+".pdf");toast("PDF download ho rahi hai ✅");}
+
 function renderBudgets(){const mtx=monthTx();const cats=[...new Set(EXP_CATS.map(c=>c[1]).concat(DB.customCats||[]))];const sel=document.getElementById("budCat");sel.innerHTML=cats.map(c=>`<option>${c}</option>`).join("");
 let html="";const keys=Object.keys(DB.budgets||{});if(!keys.length)html='<div class="empty">Koi budget nahi — neeche se set karein.</div>';
 keys.forEach(c=>{let spent=0;mtx.forEach(t=>{if(t.type==="expense"&&t.cat===c)spent+=t.amount;});const lim=DB.budgets[c];const pct=Math.min(100,Math.round(spent/lim*100));const cls=spent>lim?"over":pct>=80?"warn":"";html+=`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;font-size:13px"><b>${c}</b><span>${fmt(spent)} / ${fmt(lim)} ${spent>lim?'<span class="chip red">⚠️ Hadh Paar!</span>':pct>=80?'<span class="chip amber">Qareeb</span>':""}</span></div><div class="progress"><i class="${cls}" style="width:${pct}%"></i></div><div class="small">${pct}% istemal • Baqi: ${fmt(Math.max(0,lim-spent))}</div></div>`;});
